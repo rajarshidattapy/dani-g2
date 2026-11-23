@@ -1,0 +1,67 @@
+[
+  {
+    "file": "01-brief.png",
+    "caption": "Dani sorted your inbox, calendar and files overnight. Four actions need your OK.",
+    "hold": 4
+  },
+  {
+    "file": "02-queue.png",
+    "caption": "Open the review queue.",
+    "hold": 3
+  },
+  {
+    "file": "03-detail.png",
+    "caption": "Open the first draft. Nothing sends until you approve it.",
+    "hold": 5
+  },
+  {
+    "file": "04-running.png",
+    "caption": "Approve with one click on the temple or ring.",
+    "hold": 3
+  },
+  {
+    "file": "05-receipt.png",
+    "caption": "Done. Every action leaves a receipt.",
+    "hold": 4
+  },
+  {
+    "file": "06-queue2.png",
+    "caption": "Back to the queue: three left.",
+    "hold": 3
+  },
+  {
+    "file": "07-detail2.png",
+    "caption": "Open the file-share request.",
+    "hold": 3
+  },
+  {
+    "file": "08-error.png",
+    "caption": "Approve it. This run fails on purpose (simulated), so you can see the failure path.",
+    "hold": 4
+  },
+  {
+    "file": "09-retried.png",
+    "caption": "Retry from the glasses.",
+    "hold": 4
+  },
+  {
+    "file": "10-detail3.png",
+    "caption": "Next: a calendar change.",
+    "hold": 3
+  },
+  {
+    "file": "11-rejected.png",
+    "caption": "Not sure? Reject or skip. Dani drops it and logs it.",
+    "hold": 4
+  },
+  {
+    "file": "12-last.png",
+    "caption": "Skip the last one.",
+    "hold": 3
+  },
+  {
+    "file": "13-receipts.png",
+    "caption": "Queue clear. Receipts list what ran, what was skipped, what was rejected.",
+    "hold": 4
+  }
+]

@@ -1,5 +1,5 @@
 // Drives the running simulator through the full flow and saves one glasses screenshot per step.
-// Needs: `npm run dev` and a simulator started with --automation-port 9898 (see README).
+// Needs: `npm run dev` and a simulator in demo mode with --automation-port 9898 (`npm run sim`).
 // Output: demo/steps/NN-name.png and demo/steps.json (captions + hold times for make-video.sh).
 import { mkdir, writeFile } from 'node:fs/promises';
 

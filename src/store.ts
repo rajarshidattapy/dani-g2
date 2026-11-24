@@ -1,6 +1,6 @@
 import type { ActionItem, ExecResult, Outcome, Receipt } from './model';
 
-export type Screen = 'brief' | 'queue' | 'detail' | 'running' | 'receipt' | 'error' | 'receipts';
+export type Screen = 'offline' | 'brief' | 'queue' | 'detail' | 'running' | 'receipt' | 'error' | 'receipts';
 
 export interface State {
   label: string;
@@ -21,6 +21,10 @@ export type Input =
 
 export const MENU = { approve: 1, skip: 2, reject: 3 } as const;
 export const DETAIL_ACTIONS = ['Approve', 'Skip', 'Reject'] as const;
+
+export function offlineState(label: string, reason: string, receipts: Receipt[] = []): State {
+  return { label, screen: 'offline', pending: [], receipts, current: 0, failure: reason };
+}
 
 export function initialState(label: string, items: ActionItem[], receipts: Receipt[] = []): State {
   const done = new Set(receipts.map((r) => r.itemId));
@@ -56,11 +60,14 @@ function settle(s: State, outcome: Outcome, ref: string, now: Date): State {
 /** Pure reducer for glasses input. Running an approval is a separate step: see `finishRun`. */
 export function reduce(s: State, input: Input, now = new Date()): State {
   switch (s.screen) {
+    case 'offline':
+      return s; // the controller reloads on click
     case 'brief':
       if (input.type === 'click') {
-        return input.index === 0 ? { ...s, screen: s.pending.length ? 'queue' : 'brief' } : { ...s, screen: 'receipts' };
+        if (input.index === 0) return { ...s, screen: s.pending.length ? 'queue' : 'brief' };
+        if (input.index === 1) return { ...s, screen: 'receipts' };
       }
-      return s;
+      return s; // index 2 is Refresh, handled by the controller
     case 'queue':
       if (input.type === 'back') return { ...s, screen: 'brief' };
       if (input.type === 'click' && s.pending[input.index]) return { ...s, current: input.index, screen: 'detail' };

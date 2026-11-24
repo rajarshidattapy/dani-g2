@@ -11,11 +11,12 @@ const log = (m: string) => {
 
 async function boot() {
   const params = new URLSearchParams(location.search);
-  const backend = params.get('backend'); // e.g. ?backend=https://my-agent.example.com&token=...
+  const backend = params.get('backend')?.replace(/\/+$/, ''); // ?backend=http://host:8787&token=...
   const token = params.get('token') ?? undefined;
-  const source = backend ? new HttpSource(backend, token) : new SampleSource();
-  const executor = backend ? new HttpExecutor(backend, token) : new SimulatedExecutor();
-  log(backend ? `backend: ${backend}` : 'no backend set: using the bundled SAMPLE queue');
+  const demo = params.get('demo') === '1';
+  const source = backend ? new HttpSource(backend, token) : demo ? new SampleSource() : undefined;
+  const executor = backend ? new HttpExecutor(backend, token) : new SimulatedExecutor(900, ['s-3']);
+  log(backend ? `backend: ${backend}` : demo ? 'demo mode: made-up SAMPLE items, simulated executor' : 'no backend set');
 
   const bridge = await waitForEvenAppBridge();
   const view = new GlassesView(bridge);

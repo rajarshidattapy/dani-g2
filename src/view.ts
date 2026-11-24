@@ -34,6 +34,13 @@ export function clip(text: string, max: number): string {
   return t.length <= max ? t : t.slice(0, max - 1).trimEnd() + '…';
 }
 
+/** Text containers hold at most 999 bytes; cut on a character boundary. */
+export function fitBytes(text: string, max = 900): string {
+  let out = text;
+  while (new TextEncoder().encode(out).length > max) out = out.slice(0, -1);
+  return out;
+}
+
 /** List item names are limited to 63 bytes on the glasses. */
 export function listName(text: string): string {
   let out = text;
@@ -41,7 +48,8 @@ export function listName(text: string): string {
   return out;
 }
 
-const APP_TAG: Record<ActionItem['app'], string> = { gmail: 'MAIL', calendar: 'CAL', drive: 'DRIVE' };
+const APP_TAG: Record<string, string> = { gmail: 'MAIL', calendar: 'CAL', drive: 'DRIVE' };
+const tag = (app?: string) => (app ? (APP_TAG[app] ?? app.slice(0, 5).toUpperCase()) : 'TASK');
 
 function header(s: State, right = ''): TextBox {
   const c = counts(s);
@@ -57,8 +65,21 @@ function header(s: State, right = ''): TextBox {
 }
 
 export function render(s: State): Page {
+  const page = renderRaw(s);
+  return { ...page, texts: page.texts.map((t) => ({ ...t, content: fitBytes(t.content) })) };
+}
+
+function renderRaw(s: State): Page {
   const item = openItem(s);
   switch (s.screen) {
+    case 'offline':
+      return {
+        texts: [
+          { name: 'hdr', x: 0, y: 0, w: W, h: 36, content: `DANI · ${s.label}` },
+          { name: 'body', x: 0, y: 44, w: W, h: 100, content: clip(s.failure ?? 'Not connected.', 200) },
+        ],
+        list: { name: 'off', x: 0, y: 160, w: W, h: 100, items: ['Try again'] },
+      };
     case 'brief': {
       const c = counts(s);
       const body =
@@ -66,14 +87,14 @@ export function render(s: State): Page {
           ? `${c.pending} action${c.pending === 1 ? '' : 's'} need your OK.\nNext: ${clip(s.pending[0]!.title, 40)}`
           : `Queue clear. ${c.done} done, ${c.skipped} skipped, ${c.rejected} rejected.`;
       return {
-        texts: [header(s), { name: 'body', x: 0, y: 44, w: W, h: 80, content: body }],
+        texts: [header(s), { name: 'body', x: 0, y: 44, w: W, h: 70, content: body }],
         list: {
           name: 'nav',
           x: 0,
-          y: 140,
+          y: 120,
           w: W,
-          h: 110,
-          items: [`Review queue (${c.pending})`, `Receipts (${s.receipts.length})`],
+          h: 150,
+          items: [`Review queue (${c.pending})`, `Receipts (${s.receipts.length})`, 'Refresh'],
         },
       };
     }
@@ -86,11 +107,11 @@ export function render(s: State): Page {
           y: 44,
           w: W,
           h: 236,
-          items: s.pending.map((p) => listName(`${APP_TAG[p.app]} ${clip(p.title, 44)}`)),
+          items: s.pending.map((p) => listName(`${tag(p.app)} ${clip(p.title, 44)}`)),
         },
       };
     case 'detail': {
-      if (!item) return render({ ...s, screen: 'queue' });
+      if (!item) return renderRaw({ ...s, screen: 'queue' });
       return {
         texts: [
           header(s, `${s.current + 1}/${s.pending.length}`),
@@ -120,7 +141,8 @@ export function render(s: State): Page {
       };
     case 'receipt': {
       const r = s.last;
-      const verb = r?.outcome === 'done' ? 'Done' : r?.outcome === 'skipped' ? 'Skipped' : 'Rejected';
+      const recordedOnly = r?.outcome === 'done' && r.ref.startsWith('recorded-');
+      const verb = recordedOnly ? 'Recorded' : r?.outcome === 'done' ? 'Done' : r?.outcome === 'skipped' ? 'Skipped' : 'Rejected';
       return {
         texts: [
           header(s, verb),
@@ -130,7 +152,7 @@ export function render(s: State): Page {
             y: 50,
             w: W,
             h: 170,
-            content: `${verb}: ${clip(r?.title ?? '', 44)}\nRef ${clip(r?.ref ?? '', 40)}\n\nClick to continue.`,
+            content: `${verb}: ${clip(r?.title ?? '', 44)}\nRef ${clip(r?.ref ?? '', 40)}${recordedOnly ? '\nApproval saved. Nothing was sent.' : ''}\n\nClick to continue.`,
             capture: true,
           },
         ],

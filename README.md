@@ -20,38 +20,33 @@ Built for the Even Realities hackathon, Track 4 (AI assistants). Submitted by Da
 | Failed | Why it did not run, then Retry / Skip it | Click |
 | Receipts | The last four outcomes | Double-click or click to go back |
 
-Receipts are saved in the Even App's local storage, so an item you already handled does not come back after a restart.
+Receipts are saved in the Even App's local storage (last 200). A saved approval, skip or reject hides that item id on later loads, so the queue is not shown twice.
 
-## Demo data is labeled
+## Two modes
 
-The repo ships with a small synthetic queue (`public/queue.sample.json`) and a simulated executor so the app runs with no accounts and no paid services. The glasses header says `SAMPLE DATA` the whole time. The simulated executor sends no mail, edits no calendar and shares no file. It also fails the file-share item once on purpose so the retry path can be seen.
+**Backend mode (the real app).** Open the page with `?backend=<url>` and optionally `&token=<bearer>`. The glasses header says `LIVE`. The app calls:
 
-All people and items in the sample queue are made up.
+- `GET {backend}/queue` returns `{ "items": ActionItem[] }`
+- `POST {backend}/actions/{id}/approve` returns `{ "ref": "..." }`, or a non-2xx reply with `{ "error": "..." }` (shown on the glasses, with Retry)
+- `POST {backend}/actions/{id}/skip` and `/reject` tell the backend about decisions (best effort; the on-device receipt is kept either way)
 
-## Connect a real assistant
+`ActionItem` is `{ id, title, draft, from?, app? }` (`src/model.ts`). Payloads are validated: malformed or duplicate items are dropped, and the list is capped at the glasses' 20-row limit. Requests time out after 10 seconds. If the backend is down the glasses show an offline screen with "Try again".
 
-Open the page with `?backend=<url>` (and optionally `&token=<bearer>`). The app then uses:
+With no `?backend=` and no `?demo=1` the app shows "NOT CONNECTED". It never falls back to fake data.
 
-- `GET {backend}/queue` returning `{ "items": ActionItem[] }`
-- `POST {backend}/actions/{id}/approve` returning `{ "ref": "..." }` on success
+**Demo mode (`?demo=1`).** Loads four made-up items from `public/queue.sample.json` and uses a simulated executor that sends nothing and touches no account. The header says `SAMPLE DATA`. It fails the file-share item once on purpose so the retry screen can be shown. This is what the demo video uses.
 
-`ActionItem` is defined in `src/model.ts`. With a backend set, the header says `LIVE` and the simulated executor is not used. Skip and reject are recorded on the device only; the backend is only called on approve.
+### Reference backend
 
-## Run it
-
-Requires Node 20+.
+`server/` is a small dependency-free Node server that implements the contract above, with a file-backed queue and an audit log:
 
 ```bash
-npm install
-npm test          # unit tests for the state machine, layout limits, event mapping
-npm run typecheck
-npm run dev       # serves the app on http://127.0.0.1:5173
-npm run sim       # second terminal: opens the Even Hub simulator on it
+DANI_TOKEN=change-me node server/index.mjs                  # port 8787
+curl -X POST localhost:8787/queue -H 'authorization: Bearer change-me' \
+  -d '{"id":"m1","title":"Reply: standup","from":"Team","draft":"Notes are in the doc.","app":"gmail"}'
 ```
 
-On a real G2, serve the app and load its URL from the Even App developer flow, or package it with the Even Hub CLI.
-
-Headless Linux (CI, containers): `scripts/sim-linux.sh` runs the simulator under Xvfb with its automation port on 9898. Then `npm run demo` drives the whole flow and saves one glasses screenshot per step into `demo/steps/`, and `scripts/make-video.sh` turns them into a captioned video (needs ffmpeg and jq).
+An assistant adds drafts with `POST /queue`. On approve, the server POSTs `{ "item": ... }` to `DANI_HANDLER_URL` if you set one; a 2xx reply counts as done and may return `{ "ref": "..." }`, a failure keeps the item pending so Retry works. **If `DANI_HANDLER_URL` is not set, approve only records the decision.** The reply is marked `recorded_only` and the glasses show "Recorded. Nothing was sent." The server does not send mail, edit calendars or share files by itself. Without `DANI_TOKEN` it listens on localhost only.
 
 ## How it is built
 
@@ -61,17 +56,21 @@ src/store.ts       pure reducer: screen + input -> next screen (no I/O)
 src/view.ts        state -> page description (576x288, container limits enforced)
 src/glasses.ts     page -> Even Hub SDK containers; SDK events -> app input
 src/controller.ts  runs approvals, saves receipts
-src/adapters.ts    sample source, HTTP source, HTTP executor, simulated executor
+src/adapters.ts    HTTP source and executor (timeouts, error bodies); demo-only sample source and simulated executor
+src/validate.ts    validates untrusted backend payloads
+server/            reference backend (tested end to end against the real client code)
 ```
 
 The reducer and view have no SDK imports, so they are tested directly. Built with [`@evenrealities/even_hub_sdk`](https://www.npmjs.com/package/@evenrealities/even_hub_sdk) 0.0.16 and tested in [`@evenrealities/evenhub-simulator`](https://www.npmjs.com/package/@evenrealities/evenhub-simulator) 0.9.5.
 
 ## Status and limits
 
-- Tested in the simulator only. It has not been run on physical G2 glasses yet.
-- The simulator does not emit ring or temple source details, so input handling is by event type only.
+- Tested in the simulator only. It has not been run on physical G2 glasses.
+- Unit and integration tests run in CI (`.github/workflows/ci.yml`). The glasses UI itself is checked by running the simulator, not by automated tests.
+- The simulator reports the same source for temple and ring input, so ring behavior is untested.
+- Skipping or rejecting in the app is reversible only in the backend you connect. The app keeps no undo.
+- The reference backend has no multi-user support, rate limiting or TLS. Put it behind a proxy if you expose it.
 - No microphone, camera or location is used.
-- The HTTP backend contract above is a proposal. This repo does not include a backend.
 
 ## What existed before this repo
 

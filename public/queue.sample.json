@@ -1,10 +1,9 @@
 {
   "label": "SAMPLE DATA",
-  "note": "Synthetic items for demos and tests. Not real mail, events or files.",
+  "note": "Synthetic items for demo mode (?demo=1) and tests. Not real mail, events or files.",
   "items": [
     {
       "id": "s-1",
-      "kind": "reply",
       "app": "gmail",
       "title": "Reply: Q3 invoice",
       "from": "Ava Rao (sample)",
@@ -12,7 +11,6 @@
     },
     {
       "id": "s-2",
-      "kind": "schedule",
       "app": "calendar",
       "title": "Move Thu sync to 3pm",
       "from": "Ben Ortiz (sample)",
@@ -20,16 +18,13 @@
     },
     {
       "id": "s-3",
-      "kind": "share",
       "app": "drive",
       "title": "Share roadmap deck",
       "from": "Chloe Park (sample)",
-      "draft": "Give design@ view-only access to 'Roadmap v4'. No edit, no download link. Expires in 7 days.",
-      "sampleFailOnce": true
+      "draft": "Give design@ view-only access to 'Roadmap v4'. No edit, no download link. Expires in 7 days."
     },
     {
       "id": "s-4",
-      "kind": "reply",
       "app": "gmail",
       "title": "Decline: webinar invite",
       "from": "GrowthCo (sample)",

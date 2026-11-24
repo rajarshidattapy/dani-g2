@@ -8,8 +8,8 @@ import { toInput } from '../src/glasses';
 import { OsEventTypeList } from '@evenrealities/even_hub_sdk';
 
 const items: ActionItem[] = [
-  { id: 'a', kind: 'reply', app: 'gmail', title: 'Reply: invoice', from: 'Test', draft: 'Draft A' },
-  { id: 'b', kind: 'share', app: 'drive', title: 'Share deck', from: 'Test', draft: 'Draft B', sampleFailOnce: true },
+  { id: 'a', app: 'gmail', title: 'Reply: invoice', from: 'Test', draft: 'Draft A' },
+  { id: 'b', app: 'drive', title: 'Share deck', from: 'Test', draft: 'Draft B' },
 ];
 const NOW = new Date('2026-11-23T10:00:00Z');
 
@@ -127,7 +127,11 @@ describe('controller', () => {
 
   it('runs the executor only after approve and persists the receipt', async () => {
     const calls: string[] = [];
-    const exec: Executor = { approve: async (i) => (calls.push(i.id), { ok: true, ref: 'ok-' + i.id }) };
+    const resolved: string[] = [];
+    const exec: Executor = {
+      approve: async (i) => (calls.push(i.id), { ok: true, ref: 'ok-' + i.id }),
+      resolve: async (i, o) => void resolved.push(`${i.id}:${o}`),
+    };
     const store = mem();
     const c = new Controller(source, exec, store, () => {});
     await c.start();
@@ -144,7 +148,7 @@ describe('controller', () => {
   });
 
   it('simulated executor fails once for the flagged item, then succeeds', async () => {
-    const ex = new SimulatedExecutor(1);
+    const ex = new SimulatedExecutor(1, ['b']);
     expect((await ex.approve(items[1]!)).ok).toBe(false);
     expect((await ex.approve(items[1]!)).ok).toBe(true);
     expect((await ex.approve(items[0]!)).ok).toBe(true);
@@ -162,5 +166,83 @@ describe('event mapping', () => {
   });
   it('ignores scroll and foreground events', () => {
     expect(toInput({ sysEvent: { eventType: OsEventTypeList.FOREGROUND_ENTER_EVENT } } as never)).toBeUndefined();
+  });
+});
+
+import { parseItems } from '../src/validate';
+import { fitBytes } from '../src/view';
+
+describe('validation and robustness', () => {
+  it('drops malformed and duplicate items instead of guessing', () => {
+    const { items, dropped } = parseItems({
+      items: [{ id: 'a', title: 't', draft: 'd' }, { id: 'a', title: 't', draft: 'd' }, { title: 'no id', draft: 'd' }, 5, null],
+    });
+    expect(items).toHaveLength(1);
+    expect(dropped).toBe(4);
+  });
+  it('rejects a payload without an items array', () => {
+    expect(() => parseItems({})).toThrow();
+  });
+  it('caps the queue at 20 items (glasses list limit)', () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ id: String(i), title: 't', draft: 'd' }));
+    expect(parseItems({ items: many }).items).toHaveLength(20);
+  });
+  it('fitBytes keeps multi-byte text under the container limit', () => {
+    expect(new TextEncoder().encode(fitBytes('日本語'.repeat(400))).length).toBeLessThanOrEqual(900);
+  });
+  it('no backend and no demo: offline screen, not sample data', async () => {
+    const pages: string[] = [];
+    const c = new Controller(undefined, new SimulatedExecutor(1), { get: async () => '', set: async () => {} }, (p) => void pages.push(p.texts.map((t) => t.content).join('|')));
+    await c.start();
+    expect(c.state.screen).toBe('offline');
+    expect(pages.at(-1)).toContain('No backend set');
+  });
+  it('a failing source shows offline and Try again recovers', async () => {
+    let fail = true;
+    const src: QueueSource = { load: async () => { if (fail) throw new Error('down'); return { label: 'LIVE', items }; } };
+    const c = new Controller(src, new SimulatedExecutor(1), { get: async () => '', set: async () => {} }, () => {});
+    await c.start();
+    expect(c.state.screen).toBe('offline');
+    fail = false;
+    await c.handle({ type: 'click', index: 0 });
+    expect(c.state.screen).toBe('brief');
+    expect(c.state.pending).toHaveLength(2);
+  });
+  it('Refresh picks up new items and keeps receipts', async () => {
+    let list = [items[0]!];
+    const src: QueueSource = { load: async () => ({ label: 'LIVE', items: list }) };
+    const c = new Controller(src, new SimulatedExecutor(1), { get: async () => '', set: async () => {} }, () => {});
+    await c.start();
+    await c.handle({ type: 'click', index: 0 });
+    await c.handle({ type: 'click', index: 0 });
+    await c.handle({ type: 'click', index: 1 }); // skip a
+    list = [items[0]!, items[1]!];
+    await c.handle({ type: 'click', index: 0 }); // receipt -> brief
+    await c.handle({ type: 'click', index: 2 }); // refresh
+    expect(c.state.pending.map((p) => p.id)).toEqual(['b']);
+    expect(c.state.receipts).toHaveLength(1);
+  });
+  it('skip is reported to the executor so the backend stays in sync', async () => {
+    const seen: string[] = [];
+    const exec: Executor = { approve: async () => ({ ok: true, ref: 'r' }), resolve: async (i, o) => void seen.push(`${i.id}:${o}`) };
+    const c = new Controller({ load: async () => ({ label: 'LIVE', items }) }, exec, { get: async () => '', set: async () => {} }, () => {});
+    await c.start();
+    await c.handle({ type: 'click', index: 0 });
+    await c.handle({ type: 'click', index: 0 });
+    await c.handle({ type: 'click', index: 2 });
+    expect(seen).toEqual(['a:rejected']);
+  });
+});
+
+describe('honest receipts', () => {
+  it('a record-only approval is shown as Recorded, not Done', () => {
+    let s = initialState('LIVE', items);
+    s = reduce(reduce(s, { type: 'click', index: 0 }), { type: 'click', index: 0 });
+    s = reduce(s, { type: 'click', index: 0 });
+    s = finishRun(s, { ok: true, ref: 'recorded-ab12' });
+    const text = render(s).texts.map((t) => t.content).join('\n');
+    expect(text).toContain('Recorded');
+    expect(text).toContain('Nothing was sent');
+    expect(text).not.toContain('Done:');
   });
 });
